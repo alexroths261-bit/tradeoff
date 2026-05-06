@@ -4,30 +4,37 @@ import Razorpay from 'razorpay';
 
 export async function POST(req: Request) {
   try {
-    const { couponId, amount } = await req.json();
+    const body = await req.json();
+    const couponId: string = body.couponId;
+    const amount: number = Number(body.amount) || 0;
 
-    if (!couponId || !amount) {
+    if (!couponId || amount <= 0) {
       return NextResponse.json({ error: 'Missing couponId or amount' }, { status: 400 });
     }
 
-    // Check coupon is still active and not expired
     const coupons = await sql`
       SELECT id, status, expiry_date FROM coupons 
       WHERE id = ${couponId} AND status = 'active' AND expiry_date > NOW()
     `;
 
-    if (coupons.length === 0) {
+    if (!coupons || coupons.length === 0) {
       return NextResponse.json({ error: 'Coupon not available' }, { status: 404 });
     }
 
-    // Initialize Razorpay
+    const keyId = process.env.RAZORPAY_KEY_ID || '';
+    const keySecret = process.env.RAZORPAY_KEY_SECRET || '';
+
+    if (!keyId || !keySecret) {
+      return NextResponse.json({ demo: true, amount: amount * 100 });
+    }
+
     const razorpay = new Razorpay({
-      key_id: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID,
-      key_secret: process.env.RAZORPAY_KEY_SECRET,
+      key_id: keyId,
+      key_secret: keySecret,
     });
 
     const order = await razorpay.orders.create({
-      amount: amount * 100, // Razorpay expects paise
+      amount: amount * 100,
       currency: 'INR',
       receipt: `tradeoff_${couponId}_${Date.now()}`,
     });
@@ -38,10 +45,7 @@ export async function POST(req: Request) {
       currency: 'INR',
     });
   } catch (err: any) {
-    // If Razorpay keys not set, return demo mode signal
-    if (err.message?.includes('key_id') || err.message?.includes('key_secret')) {
-      return NextResponse.json({ demo: true, amount: amount * 100 });
-    }
+    console.error('Payment error:', err.message);
     return NextResponse.json({ error: 'Payment init failed' }, { status: 500 });
   }
 }

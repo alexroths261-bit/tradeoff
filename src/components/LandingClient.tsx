@@ -142,6 +142,7 @@ export default function LandingClient({ coupons: propCoupons }: { coupons: Coupo
 
     let raf = 0;
     function loop() {
+      if (!cx) return;
       cx.clearRect(0, 0, cW, cH);
       const mx = mouseRef.current.x, my = mouseRef.current.y;
 

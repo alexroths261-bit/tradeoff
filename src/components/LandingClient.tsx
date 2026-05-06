@@ -115,7 +115,7 @@ export default function LandingClient({ coupons: propCoupons }: { coupons: Coupo
     if (!cx) return;
     let cW = 0, cH = 0;
 
-    function rsz() { cW = cv.width = window.innerWidth; cH = cv.height = window.innerHeight; }
+    function rsz() { if (!cv) return; cW = cv.width = window.innerWidth; cH = cv.height = window.innerHeight; }
     rsz();
     window.addEventListener('resize', rsz);
 

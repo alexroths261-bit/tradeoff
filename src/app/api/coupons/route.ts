@@ -9,45 +9,32 @@ export async function GET(request: Request) {
   const minPrice = searchParams.get('minPrice');
   const maxPrice = searchParams.get('maxPrice');
 
-  let where = `c.status = 'active' AND c.expiry_date > NOW()`;
-  const params: any[] = [];
-
-  if (category !== 'all') {
-    where += ` AND c.category = ${category}`;
-  }
-
-  if (search) {
-    where += ` AND (c.brand ILIKE ${'%' + search + '%'} OR c.description ILIKE ${'%' + search + '%'})`;
-  }
-
-  if (minPrice) {
-    where += ` AND c.listing_price >= ${Number(minPrice)}`;
-  }
-
-  if (maxPrice) {
-    where += ` AND c.listing_price <= ${Number(maxPrice)}`;
-  }
-
   let orderBy = 'c.created_at DESC';
   if (sort === 'price_low') orderBy = 'c.listing_price ASC';
   if (sort === 'price_high') orderBy = 'c.listing_price DESC';
   if (sort === 'discount') orderBy = '((c.original_value - c.listing_price) / c.original_value) DESC';
   if (sort === 'expiry') orderBy = 'c.expiry_date ASC';
 
+  const validCats = ['food', 'travel', 'fashion', 'grocery', 'electronics'];
+  const safeCat = validCats.includes(category) ? category : 'all';
+  const safeSearch = search.replace(/[^a-zA-Z0-9\s]/g, '').substring(0, 100);
+  const safeMin = minPrice && !isNaN(Number(minPrice)) ? Number(minPrice) : null;
+  const safeMax = maxPrice && !isNaN(Number(maxPrice)) ? Number(maxPrice) : null;
+  const validOrders = ['c.created_at DESC', 'c.created_at ASC', 'c.listing_price ASC', 'c.listing_price DESC', '((c.original_value - c.listing_price) / c.original_value) DESC', '((c.original_value - c.listing_price) / c.original_value) ASC', 'c.expiry_date ASC', 'c.expiry_date DESC'];
+  const safeOrder = validOrders.includes(orderBy) ? orderBy : 'c.created_at DESC';
+
+  let whereParts: string[] = ["c.status = 'active'", "c.expiry_date > NOW()"];
+  if (safeCat !== 'all') whereParts.push(`c.category = '${safeCat}'`);
+  if (safeSearch) whereParts.push(`(c.brand ILIKE '%${safeSearch}%' OR c.description ILIKE '%${safeSearch}%')`);
+  if (safeMin !== null) whereParts.push(`c.listing_price >= ${safeMin}`);
+  if (safeMax !== null) whereParts.push(`c.listing_price <= ${safeMax}`);
+
+  const whereStr = whereParts.join(' AND ');
+
   try {
-    const coupons = await sql`
-      SELECT
-        c.id, c.brand, c.category, c.description, c.original_value,
-        c.listing_price, c.expiry_date, c.status, c.created_at,
-        u.name as seller_name,
-        COALESCE(u.rating, 0)::float as seller_rating,
-        COALESCE(u.total_reviews, 0) as seller_reviews
-      FROM coupons c
-      JOIN users u ON c.seller_id = u.id
-      WHERE ${sql.raw(where)}
-      ORDER BY ${sql.raw(orderBy)}
-      LIMIT 50
-    `;
+    const coupons = await sql.unsafe(
+      `SELECT c.id, c.brand, c.category, c.description, c.original_value, c.listing_price, c.expiry_date, c.status, c.created_at, u.name as seller_name, COALESCE(u.rating, 0)::float as seller_rating, COALESCE(u.total_reviews, 0) as seller_reviews FROM coupons c JOIN users u ON c.seller_id = u.id WHERE ${whereStr} ORDER BY ${safeOrder} LIMIT 50`
+    );
 
     return NextResponse.json({ coupons });
   } catch (error: any) {
